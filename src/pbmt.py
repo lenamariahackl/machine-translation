@@ -3,115 +3,116 @@ import copy
 
 # Phrase-based model
 
-# a_hat = arg max_a p(e_j,f_i)
-def align(e_set, f_set, t):
-	all_aligned = {}
-	for sentence in range(0, len(e_set)):
-		e = e_set[sentence]
-		f = f_set[sentence]
-		aligned = np.zeros((len(e), len(f)))
-		for i in range(0, len(f)):
-			f_i = f[i]
-			best_prob = 0
-			best_j = 0
-			for j in range(0, len(e)):
-				e_j = e[j]
-				if (e_j, f_i) in t and t[(e_j, f_i)] > best_prob:
-					best_prob = t[(e_j, f_i)]
-					best_j = j
-			aligned[best_j][i] = 1
-		all_aligned[sentence] = aligned
-	return all_aligned
-
-# Symmetrization of alignment
-# for every sentence a alignment matrix esentence - fsentence
-# 0 if not aligned, 1 if aligned
-# 2 directions -> make intersection
-# make union, neighbour logic
-# for each sentence combine the two alignments using the word alignment algorithm
-# >merged by taking the intersection or the union of alignment points of each alignment
-# The algorithm starts with the intersection of the alignments. In
-# the growing step, neighboring alignment points that are in the union but
-# not in the intersection are added. In the final step, alignment points for
-# words that are still unaligned are added.
-
-def intersect(a, b):
-	intersect = np.zeros(np.shape(a))
-	for j in range(0, np.shape(a)[0]):
-		for i in range(0, np.shape(a)[1]):
-			intersect[j][i] = 1 if (a[j][i] == 1 and b[j][i] == 1) else 0
-	return intersect
+def intersect(e2f, f2e):
+    intersection = {}
+    for j in range(len(e2f)):
+        i = e2f[j]
+        if i != None and j == f2e[i]:
+            align(intersection, j, i)
+    return intersection
 
 
-def union(a, b):
-	union = np.zeros(np.shape(a))
-	for j in range(0, np.shape(a)[0]):
-		for i in range(0, np.shape(a)[1]):
-			union[j][i] = 1 if (a[j][i] == 1 or b[j][i] == 1) else 0
-	return union
+def union(e2f, f2e):
+    union = {}
+    for j in range(len(e2f)):
+        i = e2f[j]
+        if i != None:
+            align(union, j, i)
+    for i in range(len(f2e)):
+        j = f2e[i]
+        if j != None:
+            align(union, j, i)
+    return union
 
 
 def aligned_e(j, a):
-	return np.sum(a[j]) != 0
+    return a.get(j,None) != None
 
 
 def aligned_f(i, a):
-	return np.sum([a[j][i] for j in range(0, np.shape(a)[0])]) != 0
+    for j in range(0, len(a)):
+        a[j] = a.get(j,[])
+        if i in a[j]: return True 
+    return False
 
 
 def aligned(j, i, a):
-	return a[j][i] == 1
+    a[j] = a.get(j,[])
+    return i in a[j]
 
 
 def neighbour_point(j, i):
-	neighbouring = [(-1, 0), (0, -1), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-	return [(a + j, b + i) for (a, b) in neighbouring]
+    neighbouring = [(-1, 0), (0, -1), (1, 0), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
+    return [(a + j, b + i) for (a, b) in neighbouring]
 
 
-def grow_diag_final(e2f, f2e):
-	a = intersect(e2f, f2e)
-	union_alignment = union(e2f, f2e)
-	last_a = []
-	# iterate until convergence
-	while not np.array_equal(last_a, a):
-		last_a = copy.deepcopy(a)
-		for j in range(0, np.shape(e2f)[0]):
-			for i in range(0, np.shape(e2f)[1]):
-				if aligned(j, i, a):
-					for (j_new, i_new) in neighbour_point(j, i):
-						if j_new < len(a):
-							if i_new < len(a[j_new]):
-								if (not aligned_e(j_new, a) or not aligned_f(i_new, a)) and (j_new, i_new) in union_alignment:
-									a[j_new][i_new] = 1
-	for j_new in range(0, np.shape(a)[0]):
-		for i_new in range(0, np.shape(a)[1]):
-			if (not aligned_e(j_new, a) or not aligned_f(i_new, a)) and (j_new, i_new) in union_alignment:
-				a[j_new][i_new] = 1
-	return a
+def align(a, j, i):
+    a[j] = a.get(j,[])
+    if i not in a[j]: a[j].append(i)
+
+
+# Symmetrization of alignment using the word alignment algorithm
+# for every sentence return alignment dict e -> f
+# S. 118 Figure 4.14 GROW-DIAG-FINAL(e2f,f2e)
+def combine(e2f, f2e):
+    intersect_a = intersect(e2f, f2e)
+    union_a = union(e2f, f2e)
+    a = intersect_a
+    last_a = {}
+    # iterate until convergence
+    while not last_a == a:
+        last_a = copy.deepcopy(a)
+        for j in range(0, len(e2f)):
+            for i in range(0, len(f2e)):
+                if aligned(j, i, a):
+                    for (j_new, i_new) in neighbour_point(j, i):
+                        if 0 < j_new < len(e2f):
+                            if 0 < i_new < len(f2e):
+                                if (not aligned_e(j_new, a) or not aligned_f(i_new, a)) and (j_new, i_new) in union_a:
+                                    align(a, j_new, i_new)
+    for j_new in range(0, len(e2f)):
+        for i_new in range(0, len(f2e)):
+            if (not aligned_e(j_new, a) or not aligned_f(i_new, a)) and (j_new, i_new) in union_a:
+                align(a, j_new, i_new)
+    return a
+
+
+# Viterbi alignment
+# find the most probable alignment for a given translation pair
+# Output: dictionary viterbi_alignment src -> [tar]
+def viterbi_alignment(src, tar, t, a):
+    viterbi_alignment = {}
+    for (j, src_j) in enumerate(src):
+        max_value = -1
+        max_index = None
+        for (i, tar_i) in enumerate(tar):
+            # TODO what if no alignment or (src_j, tar_i) not in t?
+            if (src_j, tar_i) in t:
+                value = t[(src_j, tar_i)] 
+                 # TODO else what? should a be 0 then or be ignored?
+                if (i, j, len(src), len(tar)) in a:
+                    value *= a[(i, j, len(src), len(tar))]
+                if max_value < value:
+                    max_value = value
+                    max_index = i
+        viterbi_alignment[j] = max_index
+    return viterbi_alignment
 
 
 # Phrase extraction from symmetrized alignment table
-# phrase extraction algorithm Use a suitable threshold for maximum phrase length and
-# estimate the phrase translation probabilities.
-# Phrase extraction algorithm:
-# For each English phrase estart .. eend,
-# the minimal phrase of aligned foreign words is identified fstart .. fend. Words in
-# the foreign phrase are not allowed to be aligned with English words outside the
-# English phrase. This pair of phrases is added, along with additional phrase pairs
-# that include additional unaligned foreign words at the edge of the foreign phrase.
-# Input: word alignment A for sentence pair (e,f)
+# Input: word alignments a for sentence pairs (e,f)
 # Output: set of phrase pairs BP
-
+# S. 133 Figure 5.5
 # TODO max phrase length
 def extract(f, f_start, f_end, e, e_start, e_end, a):
 	# check if at least one alignment point
-	if f_end < 0:
+	if f_end < 0: 
 		return []
 	# check if alignment points violate consistency
-	for j in range(0, np.shape(a)[0]):
-		for i in range(0, np.shape(a)[1]):
-			if a[j][i] == 1:
-				if (f_start <= i <= f_end) and (j < e_start or j > e_end):
+	for j in range(0, len(e)):
+		for i in range(0, len(f)):
+			if i in a.get(j,[]):
+				if (f_start <= i and i <= f_end) and (j < e_start or j > e_end):                			
 					return []
 	# add phrase pairs (incl. additional unaligned f)
 	E = []
@@ -125,15 +126,15 @@ def extract(f, f_start, f_end, e, e_start, e_end, a):
 			first2 = False
 			E.append((e[e_start:e_end + 1], f[f_s:f_e + 1]))
 			f_e += 1
-			if f_e >= np.shape(a)[1]: break
+			if f_e >= len(f): break
 		f_s -= 1
 		if f_s < 0: break
 	return E
 
 
-def phrase_extraction(e_set, f_set, all_alignments):
+def phrase_extraction(e_set, f_set, all_a):
 	all_BP = []
-	for index, alignment in all_alignments.items():
+	for index, a in all_a.items():
 		e = e_set[index]
 		f = f_set[index]
 		BP = []
@@ -141,29 +142,62 @@ def phrase_extraction(e_set, f_set, all_alignments):
 			for e_end in range(e_start, len(e)):
 				# find the minimally matching foreign phrase
 				(f_start, f_end) = (len(f) - 1, -1)
-				for j in range(0, np.shape(alignment)[0]):
-					for i in range(0, np.shape(alignment)[1]):
-						if alignment[j][i] == 1:
+				for j in range(0, len(e)):
+					for i in range(0, len(f)):
+						if i in a.get(j,[]):
 							if e_start <= j <= e_end:
 								f_start = min(i, f_start)
 								f_end = max(i, f_end)
-				BP.append(extract(f, f_start, f_end, e, e_start, e_end, alignment))
+				BP.append(extract(f, f_start, f_end, e, e_start, e_end, a))
 		all_BP.append([item for sublist in BP for item in sublist])
-	return all_BP
+	return [item for sublist in all_BP for item in sublist]
 
 
-# Scoring Phrase Translations
-# the translation probability φ(f|e) is estimated by the relative frequency
-def φ(e, f, count):
+def count_phrases(all_BP):
+    phrase_counts = {}
+    for (a, b) in all_BP:
+        key = str((a, b))
+        phrase_counts[key] = phrase_counts.get(key, 0) + 1
+    return phrase_counts
+
+
+# Phrase translation probability
+def PT_prob(e, f, phrase_counts):
 	key = str((e, f))
 	sum = 0
 	for f_i in f:
 		if str((e, [f_i])) in count:
-			sum += count[str((e, [f_i]))]
-	if str((e, f)) in count:
-		return count[key] / sum
+			sum += phrase_counts[str((e, [f_i]))]
+	if str((e, f)) in phrase_counts:
+		return phrase_counts[key] / sum
 	else:
 		return 0
+
+
+#bigram language model
+def count_grams(data):
+    unigram_counts = {}
+    bigram_counts = {} 
+    for sentence in data:
+        unigram = sentence[len(sentence)-1]
+        unigram_counts[unigram] = unigram_counts.get(unigram, 0) + 1
+        for index in range(0, len(sentence)-1):
+            bigram = (sentence[index], sentence[index+1])
+            bigram_counts[bigram] = bigram_counts.get(bigram, 0) + 1
+            unigram = sentence[index]
+            unigram_counts[unigram] = unigram_counts.get(unigram, 0) + 1
+    return unigram_counts, bigram_counts
+
+
+#TODO is smoothing right?
+# language model probability
+def LM_prob(prev, cur, unigram_counts, bigram_counts):
+    smoothed_bigram_counts = bigram_counts.get((prev, cur), 0) + 1     #smoothing
+    smoothed_unigram_counts = unigram_counts.get(prev, 0) + len(unigram_counts)
+    if smoothed_unigram_counts == 0:
+        return 0
+    else: 
+        return float(smoothed_bigram_counts) / float(smoothed_unigram_counts)
 
 
 #distance based reordering model d
@@ -173,17 +207,15 @@ def d(x):
     return alpha**abs(x)
 
 
-def calc_vals_for_d(alignment, j, f):
+def calc_vals_for_d(a, j, f):
     #pos of 1st word of f that translates to jth phrase in e
     i_first_occ = len(f)
     #TODO what to do if no first occurence at all
-    for i, f_i in enumerate(alignment[j]):
-        if f_i == 1:
-            if i <= i_first_occ: i_first_occ = i
+    for i in a.get(j,[]):
+        if i <= i_first_occ: i_first_occ = i
     #pos of last word of f that translates to (jth - 1) phrase in e
     i_last_occ = -1
     if j > 0:
-        for i, f_i in enumerate(alignment[j-1]):
-            if f_i == 1:
-                if i >= i_last_occ: i_last_occ = i
+        for i in a.get(j-1,[]):
+            if i >= i_last_occ: i_last_occ = i
     return i_first_occ, i_last_occ
