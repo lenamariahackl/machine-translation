@@ -1,5 +1,6 @@
 import copy
 
+DEBUG = True
 
 # test if the two sets are equivalent
 def is_converged(t, last_t):
@@ -12,6 +13,7 @@ def is_converged(t, last_t):
 # Output: translation prob. t(e|f)
 # S.91 Figure 4.3
 def EM_IBM_Model_1(e_set, f_set, max_steps):
+	if DEBUG: print('start training IBM Model 1')
 	# sets of distinct words
 	e_words = set([item for sublist in e_set for item in sublist])
 	f_words = set([item for sublist in f_set for item in sublist])
@@ -51,8 +53,8 @@ def EM_IBM_Model_1(e_set, f_set, max_steps):
 				if (e_j, f_i) in t:
 					t[(e_j, f_i)] = count[(e_j, f_i)] / total[f_i]
 		step += 1
-	# print(last_t)
-	# print('---')
+		if DEBUG and step%25==0: print('step', step,'of', max_steps)
+	if DEBUG: print('IBM Model 1 training finished.')
 	return t
 
 
