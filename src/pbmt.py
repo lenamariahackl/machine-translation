@@ -118,7 +118,7 @@ def phrase_extraction(e_set, f_set, all_a, max_phrase_length):
 				for j in range(0, len(e)):
 					for i in range(0, len(f)):
 						if i in a.get(j,[]):
-							if e_start <= j <= e_end:
+							if e_start <= j and j <= e_end:
 								f_start = min(i, f_start)
 								f_end = max(i, f_end)
 				consistent = True
@@ -131,7 +131,6 @@ def phrase_extraction(e_set, f_set, all_a, max_phrase_length):
 								# check if at least one alignment point
 				if f_end >= 0 and consistent:
 					# add phrase pairs (incl. additional unaligned f)
-					counts = {}
 					f_s = f_start
 					first1 = True
 					while not aligned_f(f_s, a) or first1:
@@ -140,17 +139,14 @@ def phrase_extraction(e_set, f_set, all_a, max_phrase_length):
 						first2 = True
 						while not aligned_f(f_e, a) or first2:
 							first2 = False
-							index = str(e[e_start:e_end + 1])
-							counts[index] = counts.get(index,{})
-							counts[index][str(f[f_s:f_e + 1])] = counts[index].get(str(f[f_s:f_e + 1]), 0) + 1
+							index_e = str(e[e_start:e_end + 1])
+							index_f = str(f[f_s:f_e + 1])
+							phrase_counts[index_e] = phrase_counts.get(index_e, {})
+							phrase_counts[index_e][index_f] = phrase_counts[index_e].get(index_f, 0) + 1
 							f_e += 1
 							if f_e >= len(f): break
 						f_s -= 1
 						if f_s < 0: break
-						for key, value in counts.items():
-							phrase_counts[key] = phrase_counts.get(key, {})
-							for k, v in value.items():
-								phrase_counts[key][k] = phrase_counts[key].get(k, 0) + 1
 	return phrase_counts
 
 
@@ -168,8 +164,11 @@ def PT_prob(e, f, phrase_counts):
 		if DEBUG: print('calculate PT_prob for',e,f,'=', phrase_counts[str(e)][str(f)] / sum)
 		return phrase_counts[str(e)][str(f)] / sum
 	else:
-		if DEBUG: print('calculate PT_prob for',e,f,'=',0)
+		if DEBUG: print('calculate PT_prob for',e,f,'=',MIN_PROB)
+		print('tutu',str(e) in phrase_counts, str(e), str(f))
+		if str(e) in phrase_counts: print(phrase_counts[str(e)])
 		return MIN_PROB
+#TODO what if phrase not in phrasetable
 
 
 # prepare data by adding [START] and [END] markers before/after every sentence
@@ -178,7 +177,7 @@ def add_markers(e):
 	return e_m
 
 
-#bigram language model
+# count bigrams and unigrams in data
 def count_grams(data):
 	if DEBUG: print('count_grams')
 	data_m = add_markers(data)
@@ -195,47 +194,30 @@ def count_grams(data):
 	return unigram_counts, bigram_counts
 
 
-# bigram language model with Stupid Backoff smoothing
+# bigram language model with Add One smoothing
+# calculates LM probability for 2 words given unigram & bigram counts
 def LM_prob(prev, cur, unigram_counts, bigram_counts):
-	alpha =  0.4
-	unigram_count = unigram_counts.get(cur, 0)
+	LM_prob_ = 1.0
+	prev_unigram_count = unigram_counts.get(prev, 0)
 	bigram_count = bigram_counts.get((prev, cur), 0)
-	if unigram_count == 0:
-		if DEBUG: print('LM_prob(', cur, '|', prev, ')=', MIN_PROB)
-		return MIN_PROB
-	if bigram_count == 0:
-		if DEBUG: print('LM_prob(', cur, '|', prev, ')=',float(unigram_count) * alpha / float(len(unigram_counts)))
-		return float(unigram_count) * alpha / float(len(unigram_counts))
-	else:
-		if DEBUG: print('LM_prob(', cur, '|', prev, ')=',float(bigram_count) / float(unigram_counts.get(prev, 0)))
-		return float(bigram_count) / float(unigram_counts.get(prev, 0))
+	if bigram_count > 0:
+		LM_prob_ *= bigram_count + 1
+	LM_prob_ /= (prev_unigram_count + len(unigram_counts))
+	if DEBUG: print('LM_prob(', cur, '|', prev, ')=', LM_prob_)
+	return LM_prob_
 
 
-#distance based reordering model d
-#exponentially decaying cost function
-#reflects the probability that a phrase at position i is translated into a phrase at position j
+# distance based reordering model d
+# exponentially decaying cost function
+# reflects the probability that a phrase at position i is translated into a phrase at position j
+# called with (pos of 1st word of f that translates to jth phrase in e) - (pos of last word of f that translates to (jth - 1) phrase in e) - 1
 def d(x):
 	alpha = 0.5 # can be any value in [0,1]
 	if DEBUG: print('d(',x,')=',alpha**abs(x))
 	return alpha**abs(x)
 
-
-#TODO unnecessary?
-def calc_vals_for_d(a, j, f):
-	#pos of 1st word of f that translates to jth phrase in e
-	i_first_occ = len(f)
-	#TODO what to do if no first occurence at all
-	for i in a.get(j,[]):
-		if i <= i_first_occ: i_first_occ = i
-	#pos of last word of f that translates to (jth - 1) phrase in e
-	i_last_occ = -1
-	if j > 0:
-		for i in a.get(j-1,[]):
-			if i >= i_last_occ: i_last_occ = i
-	return i_first_occ, i_last_occ
-
-
-def prob_e_given_f(e, f, a, phrase_counts, unigram_counts, bigram_counts, aligned_phrases):
+# format aligned_phrases {e_to: (e_from, f_from, f_to)}
+def prob_e_given_f(e, f, phrase_counts, unigram_counts, bigram_counts, aligned_phrases):
 	prob_f_given_e = 1
 	for e_to, (e_from, f_from, f_to) in aligned_phrases.items(): # for every phrase (as chosen manually)
 		e_j = e[e_from:e_to+1]
@@ -244,11 +226,9 @@ def prob_e_given_f(e, f, a, phrase_counts, unigram_counts, bigram_counts, aligne
 			(_,_, f_to_min_1) = aligned_phrases[e_from-1]
 		f_i = f[f_from:f_to+1]
 		prob_f_given_e *= PT_prob(e_j, f_i, phrase_counts)
-		#start_j, end_j_min_1 = calc_vals_for_d(a, j, f)#hmm change? not necessary anymore?
-		#prob_f_given_e *= d(start_j - end_j_min_1 - 1)
 		prob_f_given_e *= d(f_from - f_to_min_1 - 1)
 	P_LM = 1
-	for j, e_j in enumerate(e):
+	for j, e_j in enumerate(e+['END']):
 		if j > 0: prev = e[j-1]
 		else: prev = 'START'
 		P_LM *= LM_prob(prev, e_j, unigram_counts, bigram_counts)
