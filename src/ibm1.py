@@ -1,6 +1,8 @@
 import copy
+import pickle
+import os
 
-DEBUG = True
+DEBUG = False
 
 # amount the value is allowed to be off for convergence
 # the smaller the longer the training takes
@@ -15,10 +17,11 @@ def is_converged(t, last_t):
 
 # learning translation probabilitity distributions from sentence-aligned parallel text
 # expectation maximization algorithm
-# Input: set of sentence pairs (e,f)
+# Input: set of sentence pairs (e,f), number of maximum iterations
+# optional: filename to save t_table in file
 # Output: translation prob. t(e|f)
 # S.91 Figure 4.3
-def EM_IBM_Model_1(e_set, f_set, max_steps):
+def EM_IBM_Model_1(e_set, f_set, max_steps, filename=None):
 	if DEBUG: print('start training IBM Model 1')
 	# sets of distinct words
 	e_words = set([item for sublist in e_set for item in sublist])
@@ -64,6 +67,13 @@ def EM_IBM_Model_1(e_set, f_set, max_steps):
 		step += 1
 		if DEBUG and step%25==0: print('step', step,'of', max_steps)
 	if DEBUG: print('IBM Model 1 training finished.')
+	if filename is not None:
+		if DEBUG: print('Save t table in', filename)
+		path, _ = os.path.split(filename)
+		os.makedirs(path, exist_ok=True)
+		f = open(filename, "wb", pickle.HIGHEST_PROTOCOL)
+		pickle.dump(t, f)
+		f.close()
 	return t
 
 
@@ -82,8 +92,10 @@ def prob_e_given_f_1(e, f, epsilon, t):
 			prod *= sum # here underflow possible
 			all_new = False
 		else: new = True
-	if all_new: print('None of the contained words were in the training set.')
-	elif new: print('Some contained words were not in the training set.')
+	if all_new:
+		if DEBUG: print('None of the contained words were in the training set.')
+	elif new:
+		if DEBUG: print('Some contained words were not in the training set.')
 	if prod == 1 and all_new: return 0.0
 	else: return (epsilon / ( len(f)  ) ** len(e)) * prod
 # TODO without +1 for NONE right now

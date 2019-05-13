@@ -1,6 +1,8 @@
 import copy
+import pickle
+import os
 
-DEBUG = True
+DEBUG = False
 MIN_PROB = 1e-12#float('-inf')
 
 # amount the value is allowed to be off for convergence
@@ -13,13 +15,15 @@ def is_converged(t, last_t):
 		if abs(t[(e_j, f_i)] - last_t[(e_j, f_i)]) > EPSILON: return False
 	return True
 
+
 # learning translation probabilitity distributions from sentence-aligned parallel text
 # expectation maximization algorithm
-# Input: set of sentence pairs (e,f)
+# Input: set of sentence pairs (e,f), t_table to initialize t, number of maximum iterations
+# optional: filenames to save t_table and a_table in files
 # Output: translation prob. t (lexical translation) and a (alignment)
 # S.99 Figure 4.7
 # TODO e = [None] + e
-def EM_IBM_Model_2(e_set, f_set, ibm1_t, max_steps):
+def EM_IBM_Model_2(e_set, f_set, ibm1_t, max_steps, filename_t=None, filename_a=None):
 	if DEBUG: print('start training IBM Model 2')
 	# initialize t(e|f) with IBM Model 1
 	t = copy.deepcopy(ibm1_t)
@@ -81,6 +85,20 @@ def EM_IBM_Model_2(e_set, f_set, ibm1_t, max_steps):
 		step += 1
 		if DEBUG and step % 25 == 0: print('step', step,'of', max_steps)
 	if DEBUG: print('IBM Model 2 training finished.')
+	if filename_a is not None:
+		if DEBUG: print('Save a table in', filename_a)
+		path, _ = os.path.split(filename_a)
+		os.makedirs(path, exist_ok=True)
+		f2 = open(filename_a, "wb", pickle.HIGHEST_PROTOCOL)
+		pickle.dump(a, f2)
+		f2.close()
+	if filename_t is not None:
+		if DEBUG: print('Save t table in', filename_t)
+		path, _ = os.path.split(filename_t)
+		os.makedirs(path, exist_ok=True)
+		f = open(filename_t, "wb", pickle.HIGHEST_PROTOCOL)
+		pickle.dump(t, f)
+		f.close()
 	return t, a
 
 
@@ -106,8 +124,8 @@ def prob_e_given_f_2(e, f, epsilon, t, a):
 		else:
 			new = True
 	if all_new:
-		print('None of the contained words were in the training set.')
+		if DEBUG: print('None of the contained words were in the training set.')
 	elif new:
-		print('Some contained words were not in the training set.')
+		if DEBUG: print('Some contained words were not in the training set.')
 	if prod == 1 and all_new: return 0.0
 	else: return epsilon * prod
