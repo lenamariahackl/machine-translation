@@ -2,12 +2,6 @@
 
 A python library for machine translation. For now there are implementations using the IBM Model 1, IBM Model 2 and a phrase-based model.
 
-## Getting Started
-
-### Prerequisites
-
-[Jupyter notebook](https://jupyter.org/install) - To execute the main.ipynb
-
 ## Usage and Examples
 
 To train on a corpus, the corpus file has to be read in. The methods read_in_corpus(), split_dataset() and initialize_test_sets() should be adapted to fit the filestructure of the corpus file. It is assumed the corpus consists of 2 files (one for source language, the other one for target language) each with one sentence per line.
